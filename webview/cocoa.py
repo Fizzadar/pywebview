@@ -204,51 +204,50 @@ class BrowserView:
             option = sender.indexOfSelectedItem()
             self.window().setAllowedFileTypes_(self.filter[option][1])
 
+    class DragBar(AppKit.NSView):
+        default_height = 22
+        # Fallbacks, in case these constants are not wrapped by PyObjC
+        try:
+            NSFullSizeContentViewWindowMask = AppKit.NSFullSizeContentViewWindowMask
+        except AttributeError:
+            NSFullSizeContentViewWindowMask = 1 << 15
+        try:
+            NSWindowTitleHidden = AppKit.NSWindowTitleHidden
+        except AttributeError:
+            NSWindowTitleHidden = 1
+
+        def mouseDragged_(self, theEvent):
+            screenFrame = AppKit.NSScreen.mainScreen().frame()
+            if screenFrame is None:
+                raise RuntimeError('Failed to obtain screen')
+
+            window = self.window()
+            windowFrame = window.frame()
+            if windowFrame is None:
+                raise RuntimeError('Failed to obtain frame')
+
+            currentLocation = window.convertBaseToScreen_(window.mouseLocationOutsideOfEventStream())
+            newOrigin = AppKit.NSMakePoint((currentLocation.x - self.initialLocation.x),
+                                    (currentLocation.y - self.initialLocation.y))
+            if (newOrigin.y + windowFrame.size.height) > \
+                (screenFrame.origin.y + screenFrame.size.height):
+                newOrigin.y = screenFrame.origin.y + \
+                              (screenFrame.size.height + windowFrame.size.height)
+            window.setFrameOrigin_(newOrigin)
+
+        def mouseDown_(self, theEvent):
+            window = self.window()
+
+            windowFrame = window.frame()
+            if windowFrame is None:
+                raise RuntimeError('Failed to obtain screen')
+
+            self.initialLocation = \
+                window.convertBaseToScreen_(theEvent.locationInWindow())
+            self.initialLocation.x -= windowFrame.origin.x
+            self.initialLocation.y -= windowFrame.origin.y
+
     class WebKitHost(WebKit.WKWebView):
-        def mouseDown_(self, event):
-            i = BrowserView.get_instance('webkit', self)
-            window = self.window()
-
-            if i.frameless:
-                windowFrame = window.frame()
-                if windowFrame is None:
-                    raise RuntimeError('Failed to obtain screen')
-
-                self.initialLocation = window.convertBaseToScreen_(event.locationInWindow())
-                self.initialLocation.x -= windowFrame.origin.x
-                self.initialLocation.y -= windowFrame.origin.y
-
-            super(BrowserView.WebKitHost, self).mouseDown_(event)
-
-        def mouseDragged_(self, event):
-            i = BrowserView.get_instance('webkit', self)
-            window = self.window()
-
-            if i.frameless:
-                screenFrame = AppKit.NSScreen.mainScreen().frame()
-                if screenFrame is None:
-                    raise RuntimeError('Failed to obtain screen')
-
-                windowFrame = window.frame()
-                if windowFrame is None:
-                    raise RuntimeError('Failed to obtain frame')
-
-                currentLocation = window.convertBaseToScreen_(window.mouseLocationOutsideOfEventStream())
-                newOrigin = AppKit.NSMakePoint((currentLocation.x - self.initialLocation.x),
-                                        (currentLocation.y - self.initialLocation.y))
-                if (newOrigin.y + windowFrame.size.height) > \
-                    (screenFrame.origin.y + screenFrame.size.height):
-                    newOrigin.y = screenFrame.origin.y + \
-                                (screenFrame.size.height + windowFrame.size.height)
-                window.setFrameOrigin_(newOrigin)
-
-            if event.modifierFlags() & getattr(AppKit, 'NSEventModifierFlagControl', 1 << 18):
-                i = BrowserView.get_instance('webkit', self)
-                if i and not i.debug:
-                    return
-
-            super(BrowserView.WebKitHost, self).mouseDown_(event)
-
         def rightMouseDown_(self, event):
             i = BrowserView.get_instance('webkit', self)
             if i and i.debug:
@@ -345,10 +344,15 @@ class BrowserView:
             self.window.setTitlebarAppearsTransparent_(True)
             self.window.setTitleVisibility_(NSWindowTitleHidden)
 
-            # Hide standard buttons
-            self.window.standardWindowButton_(AppKit.NSWindowCloseButton).setHidden_(True)
-            self.window.standardWindowButton_(AppKit.NSWindowMiniaturizeButton).setHidden_(True)
-            self.window.standardWindowButton_(AppKit.NSWindowZoomButton).setHidden_(True)
+            # Flip the webview so our bar is position from the top, not bottom
+            self.webkit.setFlipped_(True)
+
+            rect = AppKit.NSMakeRect(0, 0, width, BrowserView.DragBar.default_height)
+            drag_bar = BrowserView.DragBar.alloc().initWithFrame_(rect)
+            drag_bar.setAutoresizingMask_(AppKit.NSViewWidthSizable)
+
+            # Add DragBar on top of the webview
+            self.webkit.addSubview_(drag_bar)
 
         else:
             # Set the titlebar color (so that it does not change with the window color)
