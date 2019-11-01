@@ -258,3 +258,11 @@ class Window:
             directory = ''
 
         return self.gui.create_file_dialog(dialog_type, directory, allow_multiple, save_filename, file_types, self.uid)
+
+    @_shown_call
+    def get_position(self):
+        return self.gui.get_position(self.uid)
+
+    @_shown_call
+    def get_size(self):
+        return self.gui.get_size(self.uid)
